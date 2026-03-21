@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Was There a Mass Shooting Today?</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --yes: #c0392b;
+      --yes-light: #e74c3c;
+      --yes-bg: #1a0a09;
+      --no: #1a7a4a;
+      --no-light: #27ae60;
+      --no-bg: #091a0f;
+      --neutral-bg: #0d0d0d;
+      --text: #f0ece4;
+      --muted: #8a8278;
+      --border: rgba(240,236,228,0.08);
+    }
+
+    html, body { height: 100%; background: var(--neutral-bg); color: var(--text); font-family: 'DM Sans', sans-serif; }
+    body { display: flex; flex-direction: column; min-height: 100vh; transition: background 0.8s ease; }
+    body.state-yes { background: var(--yes-bg); }
+    body.state-no  { background: var(--no-bg); }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.6;
+    }
+
+    main { position: relative; z-index: 1; flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem 1.5rem; text-align: center; }
+
+    .date-label { font-family: 'DM Mono', monospace; font-size: 0.75rem; letter-spacing: 0.18em; color: var(--muted); text-transform: uppercase; margin-bottom: 2.5rem; opacity: 0; animation: fadeUp 0.6s ease 0.2s forwards; }
+
+    .answer { font-family: 'Bebas Neue', sans-serif; font-size: clamp(5rem, 22vw, 14rem); line-height: 0.9; letter-spacing: 0.02em; opacity: 0; animation: fadeUp 0.5s ease 0.4s forwards; transition: color 0.8s ease; }
+    .answer.yes { color: var(--yes-light); }
+    .answer.no  { color: var(--no-light); }
+
+    .answer-line { display: block; height: 4px; border-radius: 2px; margin-top: 0.5rem; transform: scaleX(0); transform-origin: left; animation: lineGrow 0.6s ease 0.8s forwards; }
+    .answer-line.yes { background: var(--yes); }
+    .answer-line.no  { background: var(--no); }
+
+    .subtitle { font-size: clamp(0.9rem, 2.5vw, 1.15rem); font-weight: 300; color: var(--muted); max-width: 560px; line-height: 1.6; opacity: 0; animation: fadeUp 0.5s ease 0.7s forwards; margin-top: 1.5rem; }
+
+    .incidents { margin-top: 3rem; width: 100%; max-width: 680px; opacity: 0; animation: fadeUp 0.5s ease 1s forwards; }
+    .incidents-label { font-family: 'DM Mono', monospace; font-size: 0.7rem; letter-spacing: 0.15em; color: var(--muted); text-transform: uppercase; margin-bottom: 1rem; text-align: left; }
+    .incident-card { background: rgba(240,236,228,0.04); border: 1px solid var(--border); border-left: 3px solid var(--yes); border-radius: 4px; padding: 1rem 1.25rem; margin-bottom: 0.75rem; text-align: left; }
+    .incident-location { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.3rem; }
+    .incident-meta { font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--muted); }
+    .incident-stats { display: flex; gap: 1.5rem; margin-top: 0.5rem; }
+    .stat-num { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; line-height: 1; color: var(--yes-light); }
+    .stat-label { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; }
+
+    .definition { margin-top: 3rem; max-width: 560px; background: rgba(240,236,228,0.03); border: 1px solid var(--border); border-radius: 6px; padding: 1.25rem 1.5rem; text-align: left; opacity: 0; animation: fadeUp 0.5s ease 1.2s forwards; }
+    .definition p { font-size: 0.8rem; color: var(--muted); line-height: 1.65; }
+    .definition strong { color: var(--text); font-weight: 500; }
+
+    .ytd-note { display: inline-block; background: rgba(240,236,228,0.06); border: 1px solid var(--border); border-radius: 100px; padding: 0.3rem 0.9rem; font-family: 'DM Mono', monospace; font-size: 0.7rem; letter-spacing: 0.1em; color: var(--muted); margin-top: 2.5rem; opacity: 0; animation: fadeUp 0.5s ease 1.4s forwards; }
+    .ytd-num { color: var(--text); font-weight: 500; }
+
+    .donate-section { margin-top: 4rem; width: 100%; max-width: 680px; opacity: 0; animation: fadeUp 0.5s ease 1.6s forwards; }
+    .donate-eyebrow { font-family: 'DM Mono', monospace; font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.5rem; }
+    .donate-headline { font-family: 'Bebas Neue', sans-serif; font-size: 2rem; letter-spacing: 0.04em; }
+    .donate-subtext { font-size: 0.82rem; color: var(--muted); margin-top: 0.35rem; line-height: 1.5; margin-bottom: 1.5rem; }
+    .org-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 0.85rem; }
+    .org-card { background: rgba(240,236,228,0.04); border: 1px solid var(--border); border-radius: 6px; padding: 1.25rem; text-align: left; display: flex; flex-direction: column; gap: 0.5rem; }
+    .org-name { font-weight: 700; font-size: 0.92rem; }
+    .org-tag { display: inline-block; font-family: 'DM Mono', monospace; font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase; background: rgba(240,236,228,0.07); border-radius: 3px; padding: 0.15rem 0.45rem; color: var(--muted); width: fit-content; }
+    .org-desc { font-size: 0.78rem; color: var(--muted); line-height: 1.55; flex: 1; }
+    .org-rating { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: #f0c040; }
+    .org-donate-btn { display: block; text-align: center; background: rgba(240,236,228,0.08); border: 1px solid rgba(240,236,228,0.15); border-radius: 4px; padding: 0.55rem 1rem; font-size: 0.8rem; font-weight: 600; color: var(--text); text-decoration: none; margin-top: 0.25rem; transition: background 0.2s; }
+    .org-donate-btn:hover { background: rgba(240,236,228,0.15); }
+
+    .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--muted); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 1rem; }
+    .pulse-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--yes-light); margin-right: 0.5rem; animation: pulse 1.5s ease infinite; vertical-align: middle; }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.7); } }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes lineGrow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    footer { position: relative; z-index: 1; padding: 1.5rem; text-align: center; border-top: 1px solid var(--border); }
+    footer p { font-size: 0.72rem; color: var(--muted); }
+    footer a { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+    footer a:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="date-label" id="dateLabel">—</div>
+    <div class="spinner" id="spinner"></div>
+    <div class="answer" id="answer" style="display:none"></div>
+    <div class="answer-line" id="answerLine"></div>
+    <p class="subtitle" id="subtitle"></p>
+    <div class="incidents" id="incidents" style="display:none">
+      <div class="incidents-label">Today's reported incidents</div>
+      <div id="incidentList"></div>
+    </div>
+    <div class="definition">
+      <p><strong>Definition used:</strong> A mass shooting is defined as an incident in which <strong>4 or more people are shot</strong> (injured or killed), not including the shooter. This follows the criteria used by the <strong>Gun Violence Archive</strong>, a non-partisan, independent data collection organization.</p>
+    </div>
+    <div class="ytd-note" id="ytdNote"></div>
+    <div class="donate-section">
+      <div class="donate-header">
+        <div class="donate-eyebrow">Take action</div>
+        <div class="donate-headline">Help end this.</div>
+        <div class="donate-subtext">These organizations are highly rated by Charity Navigator and work to prevent gun violence through legislation, education, and community action.</div>
+      </div>
+      <div class="org-cards">
+        <div class="org-card">
+          <div class="org-name">Everytown for Gun Safety</div>
+          <div class="org-tag">Advocacy &amp; Policy</div>
+          <div class="org-desc">The largest gun violence prevention org in the US, with 11M+ members pushing for universal background checks and evidence-based policy reform.</div>
+          <div class="org-rating">★★★★ Charity Navigator</div>
+          <a class="org-donate-btn" href="https://www.everytown.org/donate/" target="_blank" rel="noopener">Donate →</a>
+        </div>
+        <div class="org-card">
+          <div class="org-name">Sandy Hook Promise</div>
+          <div class="org-tag">Prevention &amp; Education</div>
+          <div class="org-desc">Founded by parents of Sandy Hook victims. Their school programs have prevented 14 planned shootings and saved 400+ lives through early intervention.</div>
+          <div class="org-rating">★★★★ Charity Navigator · Platinum GuideStar</div>
+          <a class="org-donate-btn" href="https://www.sandyhookpromise.org/donate" target="_blank" rel="noopener">Donate →</a>
+        </div>
+        <div class="org-card">
+          <div class="org-name">Giffords Law Center</div>
+          <div class="org-tag">Law &amp; Litigation</div>
+          <div class="org-desc">Founded by gun violence survivor Gabby Giffords. Fights in courts and legislatures for background checks, extreme risk laws, and assault weapon restrictions.</div>
+          <div class="org-rating">★★★★ Charity Navigator</div>
+          <a class="org-donate-btn" href="https://giffords.org/donate/" target="_blank" rel="noopener">Donate →</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <p>Data sourced from <a href="https://www.gunviolencearchive.org" target="_blank" rel="noopener">Gun Violence Archive</a>. Updated daily. · Not affiliated with GVA.</p>
+  </footer>
+
+  <script>
+    const TODAY = new Date();
+
+    function formatDate(d) {
+      return d.toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+    }
+
+    async function fetchData() {
+      const res = await fetch('/api/today');
+      return await res.json();
+    }
+
+    function renderYes(data) {
+      document.body.classList.add('state-yes');
+      const answer = document.getElementById('answer');
+      answer.textContent = 'YES.';
+      answer.className = 'answer yes';
+      answer.style.display = '';
+      document.getElementById('answerLine').className = 'answer-line yes';
+      document.getElementById('subtitle').innerHTML = `<span class="pulse-dot"></span>There ${data.incidents.length === 1 ? 'has been' : 'have been'} <strong>${data.incidents.length} reported mass shooting${data.incidents.length !== 1 ? 's' : ''}</strong> today in the United States.`;
+
+      const listEl = document.getElementById('incidentList');
+      data.incidents.forEach(inc => {
+        const card = document.createElement('div');
+        card.className = 'incident-card';
+        card.innerHTML = `
+          <div class="incident-location">${inc.city}, ${inc.state}</div>
+          <div class="incident-meta">${inc.description || 'No additional details available.'}</div>
+          <div class="incident-stats">
+            <div class="stat"><div class="stat-num">${inc.killed}</div><div class="stat-label">Killed</div></div>
+            <div class="stat"><div class="stat-num">${inc.injured}</div><div class="stat-label">Injured</div></div>
+            <div class="stat"><div class="stat-num">${inc.killed + inc.injured}</div><div class="stat-label">Total shot</div></div>
+          </div>`;
+        listEl.appendChild(card);
+      });
+      document.getElementById('incidents').style.display = '';
+    }
+
+    function renderNo() {
+      document.body.classList.add('state-no');
+      const answer = document.getElementById('answer');
+      answer.textContent = 'NO.';
+      answer.className = 'answer no';
+      answer.style.display = '';
+      document.getElementById('answerLine').className = 'answer-line no';
+      document.getElementById('subtitle').textContent = 'No mass shootings have been reported in the United States today. Check back later as data updates throughout the day.';
+    }
+
+    async function init() {
+      document.getElementById('dateLabel').textContent = formatDate(TODAY);
+      try {
+        const data = await fetchData();
+        document.getElementById('spinner').style.display = 'none';
+        if (data.hadShooting) { renderYes(data); } else { renderNo(); }
+        const ytd = document.getElementById('ytdNote');
+        ytd.innerHTML = `<span class="ytd-num">${data.ytdCount || '—'}</span> mass shootings in the US so far in ${TODAY.getFullYear()}`;
+      } catch(err) {
+        document.getElementById('spinner').style.display = 'none';
+        const answer = document.getElementById('answer');
+        answer.textContent = 'ERROR';
+        answer.className = 'answer';
+        answer.style.display = '';
+        document.getElementById('subtitle').textContent = 'Could not load data. Please try again later.';
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
