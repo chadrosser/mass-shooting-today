@@ -1,5 +1,6 @@
 {
   "outputDirectory": "public",
+  "cleanUrls": true,
   "crons": [
     {
       "path": "/api/cron",
