@@ -25,10 +25,11 @@ module.exports = async (req, res) => {
     .select('*', { count: 'exact', head: true })
     .gte('date', `${new Date().getFullYear()}-01-01`);
 
-  return res.status(200).json({
+return res.status(200).json({
     date: today,
     hadShooting: data.length > 0,
     incidents: data,
-    ytdCount: count || 0
+    ytdCount: count || 0,
+    lastUpdated: new Date().toISOString()
   });
 };

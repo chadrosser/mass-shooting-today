@@ -108,6 +108,7 @@
       <p><strong>Definition used:</strong> A mass shooting is defined as an incident in which <strong>4 or more people are shot</strong> (injured or killed), not including the shooter. This follows the criteria used by the <strong>Gun Violence Archive</strong>, a non-partisan, independent data collection organization.</p>
     </div>
     <div class="ytd-note" id="ytdNote"></div>
+    <div class="ytd-note" id="lastUpdated" style="margin-top: 0.5rem;"></div>
     <div class="donate-section">
       <div class="donate-header">
         <div class="donate-eyebrow">Take action</div>
@@ -200,6 +201,8 @@
         if (data.hadShooting) { renderYes(data); } else { renderNo(); }
         const ytd = document.getElementById('ytdNote');
         ytd.innerHTML = `<span class="ytd-num">${data.ytdCount || '—'}</span> mass shootings in the US so far in ${TODAY.getFullYear()}`;
+        const lastUpdated = document.getElementById('lastUpdated');
+        lastUpdated.innerHTML = `Last updated: <span class="ytd-num">${new Date(data.lastUpdated).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}</span>`;
       } catch(err) {
         document.getElementById('spinner').style.display = 'none';
         const answer = document.getElementById('answer');
