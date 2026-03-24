@@ -1,28 +1,21 @@
 /**
  * api/cron.js — Vercel Serverless Cron Endpoint
- *
- * Vercel calls this daily per the schedule in vercel.json.
- * Fetches today's incidents from Mass Shooting Tracker S3 JSON
- * and upserts them into Supabase.
- *
- * Secured with CRON_SECRET env variable (set in Vercel dashboard).
  */
 
 const { createClient } = require('@supabase/supabase-js');
 
 const MST_BASE = 'https://mass-shooting-tracker-data.s3.us-east-2.amazonaws.com';
 
-// Returns "YYYY-MM-DD" in Eastern Time (US-centric data source)
 function todayET() {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York',
   }).format(new Date());
 }
 
-// Parse "January 1, 2025" → "2025-01-01"
 function parseMstDate(raw) {
   if (!raw) return null;
   try {
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
     const d = new Date(`${raw} UTC`);
     if (isNaN(d.getTime())) return null;
     return d.toISOString().slice(0, 10);
@@ -32,7 +25,6 @@ function parseMstDate(raw) {
 }
 
 module.exports = async (req, res) => {
-  // Verify Vercel cron secret
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -55,15 +47,15 @@ module.exports = async (req, res) => {
     const allIncidents = await mstRes.json();
     if (!Array.isArray(allIncidents)) throw new Error('MST response was not an array');
 
-    // Filter to today only
     const todayRecords = allIncidents.filter(r => parseMstDate(r.date) === today);
     console.log(`[cron] ${todayRecords.length} incident(s) for ${today}`);
 
     if (todayRecords.length === 0) {
+      // Still update last_scraped even if no incidents today
+      await supabase.from('meta').upsert({ key: 'last_scraped', value: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'key' });
       return res.status(200).json({ success: true, date: today, incidentsFound: 0 });
     }
 
-    // Transform
     const rows = todayRecords.map(record => {
       const killed  = parseInt(record.killed)  || 0;
       const injured = parseInt(record.injured) || 0;
@@ -83,6 +75,9 @@ module.exports = async (req, res) => {
       .upsert(rows, { onConflict: 'date,city,state' });
 
     if (error) throw new Error(`Supabase error: ${error.message}`);
+
+    // Update last_scraped timestamp
+    await supabase.from('meta').upsert({ key: 'last_scraped', value: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'key' });
 
     return res.status(200).json({ success: true, date: today, incidentsFound: rows.length });
 

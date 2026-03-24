@@ -183,14 +183,20 @@
       document.getElementById('incidents').style.display = '';
     }
 
-    function renderNo() {
+    function renderNo(data) {
       document.body.classList.add('state-no');
       const answer = document.getElementById('answer');
       answer.textContent = 'NO.';
       answer.className = 'answer no';
       answer.style.display = '';
       document.getElementById('answerLine').className = 'answer-line no';
-      document.getElementById('subtitle').textContent = 'No mass shootings have been reported in the United States today. Check back later as data updates throughout the day.';
+      let subtitle = 'No mass shootings have been reported in the United States today.';
+      if (data.lastShootingDate) {
+        const d = new Date(data.lastShootingDate + 'T00:00:00');
+        const formatted = d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        subtitle += ` The most recent was <strong>${formatted}</strong>.`;
+      }
+      document.getElementById('subtitle').innerHTML = subtitle;
     }
 
     async function init() {
@@ -198,11 +204,16 @@
       try {
         const data = await fetchData();
         document.getElementById('spinner').style.display = 'none';
-        if (data.hadShooting) { renderYes(data); } else { renderNo(); }
+        if (data.hadShooting) { renderYes(data); } else { renderNo(data); }
         const ytd = document.getElementById('ytdNote');
         ytd.innerHTML = `<span class="ytd-num">${data.ytdCount || '—'}</span> mass shootings in the US so far in ${TODAY.getFullYear()}`;
         const lastUpdated = document.getElementById('lastUpdated');
-        lastUpdated.innerHTML = `Last updated: <span class="ytd-num">${new Date(data.lastUpdated).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}</span>`;
+        if (data.lastUpdated) {
+          const scrapeTime = new Date(data.lastUpdated).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+          lastUpdated.innerHTML = `Last updated: <span class="ytd-num">${scrapeTime}</span> · Updates daily at 8am ET`;
+        } else {
+          lastUpdated.innerHTML = `Updates daily at 8am ET`;
+        }
       } catch(err) {
         document.getElementById('spinner').style.display = 'none';
         const answer = document.getElementById('answer');

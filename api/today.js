@@ -1,8 +1,5 @@
 /**
  * api/today.js — Vercel Serverless Endpoint
- *
- * Returns today's incident data from Supabase.
- * Called by the frontend on page load.
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -12,9 +9,6 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
-// Use Eastern Time so "today" matches the US-centric MST data source.
-// Without this, UTC would flip to the next day at 8pm ET, showing
-// an empty database and incorrectly answering "NO" each evening.
 function todayET() {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York',
@@ -26,6 +20,7 @@ module.exports = async (req, res) => {
 
   const today = todayET();
 
+  // Today's incidents
   const { data, error } = await supabase
     .from('incidents')
     .select('*')
@@ -41,11 +36,28 @@ module.exports = async (req, res) => {
     .select('*', { count: 'exact', head: true })
     .gte('date', `${today.slice(0, 4)}-01-01`);
 
+  // Last scrape time from meta table
+  const { data: metaRow } = await supabase
+    .from('meta')
+    .select('value')
+    .eq('key', 'last_scraped')
+    .single();
+
+  // Most recent shooting date (for NO days)
+  const { data: lastShootingRow } = await supabase
+    .from('incidents')
+    .select('date')
+    .lt('date', today)
+    .order('date', { ascending: false })
+    .limit(1)
+    .single();
+
   return res.status(200).json({
-    date:        today,
-    hadShooting: data.length > 0,
-    incidents:   data,
-    ytdCount:    count || 0,
-    lastUpdated: new Date().toISOString(),
+    date:            today,
+    hadShooting:     data.length > 0,
+    incidents:       data,
+    ytdCount:        count || 0,
+    lastUpdated:     metaRow?.value || null,
+    lastShootingDate: lastShootingRow?.date || null,
   });
 };
