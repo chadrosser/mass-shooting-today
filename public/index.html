@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Was There a Mass Shooting Today?</title>
+  <link rel="icon" type="image/svg+xml" id="favicon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23555'/></svg>">
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -159,7 +160,13 @@
       return await res.json();
     }
 
+    function setFavicon(color) {
+      const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='${color}'/></svg>`;
+      document.getElementById('favicon').href = 'data:image/svg+xml,' + encodeURIComponent(svg);
+    }
+
     function renderYes(data) {
+      setFavicon('#e74c3c');
       document.body.classList.add('state-yes');
       const answer = document.getElementById('answer');
       answer.textContent = 'YES.';
@@ -186,6 +193,7 @@
     }
 
     function renderNo(data) {
+      setFavicon('#27ae60');
       document.body.classList.add('state-no');
       const answer = document.getElementById('answer');
       answer.textContent = 'NO.';
