@@ -216,7 +216,7 @@
         const ytd = document.getElementById('ytdNote');
         ytd.innerHTML = `<span class="ytd-num">${data.ytdCount || '—'}</span> mass shootings in the US so far in ${TODAY.getFullYear()}`;
         const lastUpdated = document.getElementById('lastUpdated');
-        lastUpdated.innerHTML = `Last updated: <span class="ytd-num">${new Date(data.lastUpdated).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' })}</span> · Updates every 2 hours`;
+        lastUpdated.innerHTML = `Last updated: <span class="ytd-num">${new Date(data.lastUpdated).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York', timeZoneName: 'short' })}</span> · Updates every 2 hours`;
       } catch(err) {
         document.getElementById('spinner').style.display = 'none';
         const answer = document.getElementById('answer');
