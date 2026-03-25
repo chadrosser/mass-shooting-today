@@ -52,7 +52,7 @@ module.exports = async (req, res) => {
 
     if (todayRecords.length === 0) {
       // Still update last_scraped even if no incidents today
-      await supabase.from('meta').upsert({ key: 'last_scraped', value: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      await supabase.from('meta').upsert({ key: 'last_scraped', value: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'key', ignoreDuplicates: false });
       return res.status(200).json({ success: true, date: today, incidentsFound: 0 });
     }
 
@@ -77,7 +77,7 @@ module.exports = async (req, res) => {
     if (error) throw new Error(`Supabase error: ${error.message}`);
 
     // Update last_scraped timestamp
-    await supabase.from('meta').upsert({ key: 'last_scraped', value: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    await supabase.from('meta').upsert({ key: 'last_scraped', value: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'key', ignoreDuplicates: false });
 
     return res.status(200).json({ success: true, date: today, incidentsFound: rows.length });
 
