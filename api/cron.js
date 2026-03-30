@@ -1,10 +1,11 @@
 /**
  * api/cron.js — Vercel Serverless Cron Endpoint
+ * Data source: Gun Violence Archive (gunviolencearchive.org)
  */
 
 const { createClient } = require('@supabase/supabase-js');
 
-const MST_BASE = 'https://mass-shooting-tracker-data.s3.us-east-2.amazonaws.com';
+const GVA_URL = 'https://www.gunviolencearchive.org/reports/mass-shooting';
 
 function todayET() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -12,16 +13,87 @@ function todayET() {
   }).format(new Date());
 }
 
-function parseMstDate(raw) {
+// Converts "March 29, 2026" to "2026-03-29"
+function parseGvaDate(raw) {
   if (!raw) return null;
   try {
-    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
-    const d = new Date(`${raw} UTC`);
+    const d = new Date(`${raw.trim()} UTC`);
     if (isNaN(d.getTime())) return null;
     return d.toISOString().slice(0, 10);
   } catch {
     return null;
   }
+}
+
+async function scrapeGva() {
+  const res = await fetch(GVA_URL, {
+    headers: {
+      // Identify ourselves honestly per GVA's mission statement
+      'User-Agent': 'wasthereamassshootingtoday.com/cron (non-commercial public awareness site; contact: rosserchad@gmail.com)',
+      'Accept': 'text/html,application/xhtml+xml',
+    },
+    cache: 'no-store',
+  });
+
+  if (!res.ok) throw new Error(`GVA fetch failed: HTTP ${res.status}`);
+
+  const html = await res.text();
+
+  // Parse tbody rows from the incidents table
+  const tbodyMatch = html.match(/<tbody>([\s\S]*?)<\/tbody>/i);
+  if (!tbodyMatch) throw new Error('Could not find tbody in GVA response');
+
+  const tbody = tbodyMatch[1];
+  const rows = [...tbody.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)];
+
+  const incidents = [];
+
+  for (const row of rows) {
+    const cells = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map(m =>
+      m[1].replace(/<[^>]+>/g, '').trim()
+    );
+
+    // Column order per GVA table:
+    // 0: IncidentID
+    // 1: IncidentDate
+    // 2: State
+    // 3: CityOrCounty
+    // 4: Address
+    // 5: NumberOfVictimsKilled
+    // 6: NumberOfVictimsInjured
+    // 7: NumberOfPerpertratorsKilled
+    // 8: NumberOfPerpertratorsInjured
+    // 9: NumberOfPerpertratorsArrested
+    // 10: Operations (links)
+
+    if (cells.length < 7) continue;
+
+    const [
+      incidentId,
+      rawDate,
+      state,
+      city,
+      address,
+      rawKilled,
+      rawInjured,
+    ] = cells;
+
+    const date = parseGvaDate(rawDate);
+    if (!date) continue;
+
+    incidents.push({
+      date,
+      city:    city  || null,
+      state:   state || null,
+      killed:  parseInt(rawKilled)  || 0,
+      injured: parseInt(rawInjured) || 0,
+      address: address || null,
+      source_url: GVA_URL,
+      description: null, // GVA table doesn't include a description field
+    });
+  }
+
+  return incidents;
 }
 
 module.exports = async (req, res) => {
@@ -35,49 +107,47 @@ module.exports = async (req, res) => {
   );
 
   const today = todayET();
-  const year  = today.slice(0, 4);
-
   console.log(`[cron] Running for date: ${today}`);
 
   try {
-    const url = `${MST_BASE}/${year}-data.json`;
-    const mstRes = await fetch(url);
-    if (!mstRes.ok) throw new Error(`MST fetch failed: HTTP ${mstRes.status}`);
+    const allIncidents = await scrapeGva();
+    console.log(`[cron] ${allIncidents.length} total incident(s) scraped from GVA`);
 
-    const allIncidents = await mstRes.json();
-    if (!Array.isArray(allIncidents)) throw new Error('MST response was not an array');
-
-    const todayRecords = allIncidents.filter(r => parseMstDate(r.date) === today);
+    const todayRecords = allIncidents.filter(r => r.date === today);
     console.log(`[cron] ${todayRecords.length} incident(s) for ${today}`);
 
     if (todayRecords.length === 0) {
-      // Still update last_scraped even if no incidents today
-      await supabase.from('meta').upsert({ key: 'last_scraped', value: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'key', ignoreDuplicates: false });
+      await supabase
+        .from('meta')
+        .upsert(
+          { key: 'last_scraped', value: new Date().toISOString(), updated_at: new Date().toISOString() },
+          { onConflict: 'key', ignoreDuplicates: false }
+        );
       return res.status(200).json({ success: true, date: today, incidentsFound: 0 });
     }
 
-    const rows = todayRecords.map(record => {
-      const killed  = parseInt(record.killed)  || 0;
-      const injured = parseInt(record.injured) || 0;
-      return {
-        date:        today,
-        city:        record.city  || null,
-        state:       record.state || null,
-        killed,
-        injured,
-        description: record.description || `${killed} killed, ${injured} injured in ${record.city || 'unknown'}, ${record.state || 'unknown'}.`,
-        source_url:  Array.isArray(record.sources) ? (record.sources[0] || null) : (record.sources || null),
-      };
-    });
+    const rows = todayRecords.map(record => ({
+      date:        record.date,
+      city:        record.city,
+      state:       record.state,
+      killed:      record.killed,
+      injured:     record.injured,
+      description: record.description || `${record.killed} killed, ${record.injured} injured in ${record.city || 'unknown'}, ${record.state || 'unknown'}.`,
+      source_url:  record.source_url,
+    }));
 
     const { error } = await supabase
       .from('incidents')
-      .upsert(rows, { onConflict: 'date,city,state' });
+      .upsert(rows, { onConflict: 'date,city,state', ignoreDuplicates: false });
 
     if (error) throw new Error(`Supabase error: ${error.message}`);
 
-    // Update last_scraped timestamp
-    await supabase.from('meta').upsert({ key: 'last_scraped', value: new Date().toISOString(), updated_at: new Date().toISOString() }, { onConflict: 'key', ignoreDuplicates: false });
+    await supabase
+      .from('meta')
+      .upsert(
+        { key: 'last_scraped', value: new Date().toISOString(), updated_at: new Date().toISOString() },
+        { onConflict: 'key', ignoreDuplicates: false }
+      );
 
     return res.status(200).json({ success: true, date: today, incidentsFound: rows.length });
 
