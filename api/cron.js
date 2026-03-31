@@ -113,10 +113,7 @@ module.exports = async (req, res) => {
     const allIncidents = await scrapeGva();
     console.log(`[cron] ${allIncidents.length} total incident(s) scraped from GVA`);
 
-    const todayRecords = allIncidents.filter(r => r.date === today);
-    console.log(`[cron] ${todayRecords.length} incident(s) for ${today}`);
-
-    if (todayRecords.length === 0) {
+    if (allIncidents.length === 0) {
       await supabase
         .from('meta')
         .upsert(
@@ -126,7 +123,7 @@ module.exports = async (req, res) => {
       return res.status(200).json({ success: true, date: today, incidentsFound: 0 });
     }
 
-    const rows = todayRecords.map(record => ({
+    const rows = allIncidents.map(record => ({
       date:        record.date,
       city:        record.city,
       state:       record.state,
@@ -136,11 +133,19 @@ module.exports = async (req, res) => {
       source_url:  record.source_url,
     }));
 
-    const { error } = await supabase
-      .from('incidents')
-      .upsert(rows, { onConflict: 'date,city,state', ignoreDuplicates: false });
+    const BATCH = 200;
+    let totalUpserted = 0;
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const batch = rows.slice(i, i + BATCH);
+      const { error } = await supabase
+        .from('incidents')
+        .upsert(batch, { onConflict: 'date,city,state', ignoreDuplicates: false });
+      if (error) throw new Error(`Supabase error on batch ${i}: ${error.message}`);
+      totalUpserted += batch.length;
+    }
 
-    if (error) throw new Error(`Supabase error: ${error.message}`);
+    const todayCount = allIncidents.filter(r => r.date === today).length;
+    console.log(`[cron] ${totalUpserted} total incident(s) upserted (${todayCount} for ${today})`);
 
     await supabase
       .from('meta')
@@ -149,7 +154,7 @@ module.exports = async (req, res) => {
         { onConflict: 'key', ignoreDuplicates: false }
       );
 
-    return res.status(200).json({ success: true, date: today, incidentsFound: rows.length });
+    return res.status(200).json({ success: true, date: today, incidentsFound: todayCount, totalUpserted });
 
   } catch (err) {
     console.error('[cron] Error:', err.message);
