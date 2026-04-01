@@ -136,13 +136,23 @@ module.exports = async (req, res) => {
   console.log(`[cron] Running for date: ${today}`);
 
   try {
-    // Fetch both in parallel
-    const [allIncidents, ytdCount] = await Promise.all([
+    // Fetch both in parallel — but don't let a YTD count failure kill the incident save
+    const [incidentsResult, ytdResult] = await Promise.allSettled([
       scrapeGva(),
       scrapeGvaYtdCount(),
     ]);
+
+    // Incident scraping is essential — propagate failure
+    if (incidentsResult.status === 'rejected') throw incidentsResult.reason;
+
+    const allIncidents = incidentsResult.value;
+    const ytdCount = ytdResult.status === 'fulfilled' ? ytdResult.value : null;
+    if (ytdResult.status === 'rejected') {
+      console.warn('[cron] YTD count scraping failed (non-fatal):', ytdResult.reason.message);
+    }
+
     console.log(`[cron] ${allIncidents.length} total incident(s) scraped from GVA`);
-    console.log(`[cron] GVA homepage YTD count: ${ytdCount}`);
+    if (ytdCount !== null) console.log(`[cron] GVA homepage YTD count: ${ytdCount}`);
 
     if (allIncidents.length === 0) {
       await supabase
@@ -154,7 +164,15 @@ module.exports = async (req, res) => {
       return res.status(200).json({ success: true, date: today, incidentsFound: 0 });
     }
 
-    const rows = allIncidents.map(record => ({
+    // Only upsert incidents from the last 30 days to avoid hammering the DB
+    // with hundreds of historical rows on every run
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const recentIncidents = allIncidents.filter(r => r.date >= cutoffStr);
+    console.log(`[cron] ${recentIncidents.length} incident(s) within 30-day window (${cutoffStr} → today)`);
+
+    const rows = recentIncidents.map(record => ({
       date:        record.date,
       city:        record.city,
       state:       record.state,
@@ -175,19 +193,19 @@ module.exports = async (req, res) => {
       totalUpserted += batch.length;
     }
 
-    const todayCount = allIncidents.filter(r => r.date === today).length;
-    console.log(`[cron] ${totalUpserted} total incident(s) upserted (${todayCount} for ${today})`);
+    const todayCount = recentIncidents.filter(r => r.date === today).length;
+    console.log(`[cron] ${totalUpserted} recent incident(s) upserted (${todayCount} for ${today})`);
 
     const now = new Date().toISOString();
+    const metaRows = [
+      { key: 'last_scraped', value: now, updated_at: now },
+    ];
+    if (ytdCount !== null) {
+      metaRows.push({ key: 'ytd_count', value: String(ytdCount), updated_at: now });
+    }
     await supabase
       .from('meta')
-      .upsert(
-        [
-          { key: 'last_scraped', value: now,               updated_at: now },
-          { key: 'ytd_count',    value: String(ytdCount),  updated_at: now },
-        ],
-        { onConflict: 'key', ignoreDuplicates: false }
-      );
+      .upsert(metaRows, { onConflict: 'key', ignoreDuplicates: false });
 
     return res.status(200).json({ success: true, date: today, incidentsFound: todayCount, totalUpserted, ytdCount });
 
