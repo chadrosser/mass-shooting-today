@@ -5,7 +5,8 @@
 
 const { createClient } = require('@supabase/supabase-js');
 
-const GVA_URL = 'https://www.gunviolencearchive.org/reports/mass-shooting';
+const GVA_URL      = 'https://www.gunviolencearchive.org/reports/mass-shooting';
+const GVA_HOME_URL = 'https://www.gunviolencearchive.org';
 
 function todayET() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -23,6 +24,31 @@ function parseGvaDate(raw) {
   } catch {
     return null;
   }
+}
+
+// Scrape the YTD mass shooting count from GVA's homepage summary table
+async function scrapeGvaYtdCount() {
+  const res = await fetch(GVA_HOME_URL, {
+    headers: {
+      'User-Agent': 'wasthereamassshootingtoday.com/cron (non-commercial public awareness site; contact: rosserchad@gmail.com)',
+      'Accept': 'text/html,application/xhtml+xml',
+    },
+    cache: 'no-store',
+  });
+
+  if (!res.ok) throw new Error(`GVA homepage fetch failed: HTTP ${res.status}`);
+
+  const html = await res.text();
+
+  // GVA homepage has a stats table; find the row containing "Mass Shootings"
+  // and grab the number that follows it
+  const match = html.match(/Mass\s+Shootings[\s\S]{0,200}?(\d{2,4})(?=\s*<)/i);
+  if (!match) throw new Error('Could not find Mass Shootings count on GVA homepage');
+
+  const count = parseInt(match[1], 10);
+  if (isNaN(count)) throw new Error('Parsed mass shooting count is NaN');
+
+  return count;
 }
 
 async function scrapeGva() {
@@ -110,8 +136,13 @@ module.exports = async (req, res) => {
   console.log(`[cron] Running for date: ${today}`);
 
   try {
-    const allIncidents = await scrapeGva();
+    // Fetch both in parallel
+    const [allIncidents, ytdCount] = await Promise.all([
+      scrapeGva(),
+      scrapeGvaYtdCount(),
+    ]);
     console.log(`[cron] ${allIncidents.length} total incident(s) scraped from GVA`);
+    console.log(`[cron] GVA homepage YTD count: ${ytdCount}`);
 
     if (allIncidents.length === 0) {
       await supabase
@@ -147,14 +178,18 @@ module.exports = async (req, res) => {
     const todayCount = allIncidents.filter(r => r.date === today).length;
     console.log(`[cron] ${totalUpserted} total incident(s) upserted (${todayCount} for ${today})`);
 
+    const now = new Date().toISOString();
     await supabase
       .from('meta')
       .upsert(
-        { key: 'last_scraped', value: new Date().toISOString(), updated_at: new Date().toISOString() },
+        [
+          { key: 'last_scraped', value: now,               updated_at: now },
+          { key: 'ytd_count',    value: String(ytdCount),  updated_at: now },
+        ],
         { onConflict: 'key', ignoreDuplicates: false }
       );
 
-    return res.status(200).json({ success: true, date: today, incidentsFound: todayCount, totalUpserted });
+    return res.status(200).json({ success: true, date: today, incidentsFound: todayCount, totalUpserted, ytdCount });
 
   } catch (err) {
     console.error('[cron] Error:', err.message);

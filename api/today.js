@@ -30,11 +30,13 @@ module.exports = async (req, res) => {
     return res.status(500).json({ error: 'Failed to fetch data' });
   }
 
-  // Year-to-date count
-  const { count } = await supabase
-    .from('incidents')
-    .select('*', { count: 'exact', head: true })
-    .gte('date', `${today.slice(0, 4)}-01-01`);
+  // Year-to-date count — sourced directly from GVA homepage via cron
+  const { data: ytdRow } = await supabase
+    .from('meta')
+    .select('value')
+    .eq('key', 'ytd_count')
+    .single();
+  const count = ytdRow ? parseInt(ytdRow.value, 10) : null;
 
   // Last scrape time from meta table
   const { data: metaRow } = await supabase
