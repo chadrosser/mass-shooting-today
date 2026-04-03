@@ -25,11 +25,9 @@ function parseGvaDate(raw) {
   }
 }
 
-
 async function scrapeGva() {
   const res = await fetch(GVA_URL, {
     headers: {
-      // Identify ourselves honestly per GVA's mission statement
       'User-Agent': 'wasthereamassshootingtoday.com/cron (non-commercial public awareness site; contact: rosserchad@gmail.com)',
       'Accept': 'text/html,application/xhtml+xml',
     },
@@ -40,7 +38,6 @@ async function scrapeGva() {
 
   const html = await res.text();
 
-  // Parse tbody rows from the incidents table
   const tbodyMatch = html.match(/<tbody>([\s\S]*?)<\/tbody>/i);
   if (!tbodyMatch) throw new Error('Could not find tbody in GVA response');
 
@@ -53,19 +50,6 @@ async function scrapeGva() {
     const cells = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map(m =>
       m[1].replace(/<[^>]+>/g, '').trim()
     );
-
-    // Column order per GVA table:
-    // 0: IncidentID
-    // 1: IncidentDate
-    // 2: State
-    // 3: CityOrCounty
-    // 4: Address
-    // 5: NumberOfVictimsKilled
-    // 6: NumberOfVictimsInjured
-    // 7: NumberOfPerpertratorsKilled
-    // 8: NumberOfPerpertratorsInjured
-    // 9: NumberOfPerpertratorsArrested
-    // 10: Operations (links)
 
     if (cells.length < 7) continue;
 
@@ -90,7 +74,7 @@ async function scrapeGva() {
       injured: parseInt(rawInjured) || 0,
       address: address || null,
       source_url: GVA_URL,
-      description: null, // GVA table doesn't include a description field
+      description: null,
     });
   }
 
@@ -124,15 +108,7 @@ module.exports = async (req, res) => {
       return res.status(200).json({ success: true, date: today, incidentsFound: 0 });
     }
 
-    // Only upsert incidents from the last 30 days to avoid hammering the DB
-    // with hundreds of historical rows on every run
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 30);
-    const cutoffStr = cutoff.toISOString().slice(0, 10);
-    const recentIncidents = allIncidents.filter(r => r.date >= cutoffStr);
-    console.log(`[cron] ${recentIncidents.length} incident(s) within 30-day window (${cutoffStr} → today)`);
-
-    const rows = recentIncidents.map(record => ({
+    const rows = allIncidents.map(record => ({
       date:        record.date,
       city:        record.city,
       state:       record.state,
@@ -153,14 +129,13 @@ module.exports = async (req, res) => {
       totalUpserted += batch.length;
     }
 
-    const todayCount = recentIncidents.filter(r => r.date === today).length;
-    console.log(`[cron] ${totalUpserted} recent incident(s) upserted (${todayCount} for ${today})`);
+    const todayCount = allIncidents.filter(r => r.date === today).length;
+    console.log(`[cron] ${totalUpserted} total incident(s) upserted (${todayCount} for ${today})`);
 
-    const now = new Date().toISOString();
     await supabase
       .from('meta')
       .upsert(
-        { key: 'last_scraped', value: now, updated_at: now },
+        { key: 'last_scraped', value: new Date().toISOString(), updated_at: new Date().toISOString() },
         { onConflict: 'key', ignoreDuplicates: false }
       );
 
