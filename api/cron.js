@@ -108,7 +108,15 @@ module.exports = async (req, res) => {
       return res.status(200).json({ success: true, date: today, incidentsFound: 0 });
     }
 
-    const rows = allIncidents.map(record => ({
+    // Deduplicate by (date, city, state) — GVA sometimes lists the same incident twice
+    const seen = new Map();
+    for (const r of allIncidents) {
+      const key = `${r.date}|${r.city}|${r.state}`;
+      if (!seen.has(key)) seen.set(key, r);
+    }
+    const dedupedIncidents = Array.from(seen.values());
+
+    const rows = dedupedIncidents.map(record => ({
       date:        record.date,
       city:        record.city,
       state:       record.state,
@@ -129,7 +137,7 @@ module.exports = async (req, res) => {
       totalUpserted += batch.length;
     }
 
-    const todayCount = allIncidents.filter(r => r.date === today).length;
+    const todayCount = dedupedIncidents.filter(r => r.date === today).length;
     console.log(`[cron] ${totalUpserted} total incident(s) upserted (${todayCount} for ${today})`);
 
     await supabase
